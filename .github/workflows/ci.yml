@@ -35,8 +35,8 @@ jobs:
 
       - name: requirements.txt matches uv.lock
         run: |
-          uv export --frozen --no-dev --no-emit-project --format requirements-txt -o /tmp/requirements.txt
-          diff -u requirements.txt /tmp/requirements.txt
+          uv export --frozen --no-dev --no-emit-project --no-header --format requirements-txt \
+            | diff -u requirements.txt -
 
       - name: hadolint
         run: docker run --rm -i "hadolint/hadolint:${HADOLINT_VERSION}" < Containerfile

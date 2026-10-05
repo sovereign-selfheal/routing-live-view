@@ -76,8 +76,8 @@ KUBERNETES_ENABLED=false uv run uvicorn app.main:app --port 8080   # the page wi
 ```
 
 After a change of the dependencies: `uv lock`, then
-`uv export --frozen --no-dev --no-emit-project --format requirements-txt -o requirements.txt` (the image
-installs `requirements.txt` with hashes; CI checks that it matches `uv.lock`).
+`uv export --frozen --no-dev --no-emit-project --no-header --format requirements-txt > requirements.txt`
+(the image installs `requirements.txt` with hashes; CI checks that it matches `uv.lock`).
 
 ## Release
 

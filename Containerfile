@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 # A live page of the routing decisions of the router and of the namespace labels of the demo.
 # Quay builds this file on every git tag v* (build trigger): see README.md.
-# Python packages: requirements.txt, exported from uv.lock with hashes (`uv export`).
+# Python packages: requirements.txt, exported from uv.lock with hashes (`uv export --no-header`).
 # =============================================================================
 # ubi9/python-312 (tag latest), resolved on registry.access.redhat.com on 2026-10-05
 FROM registry.access.redhat.com/ubi9/python-312@sha256:a9f1c5dd1cd239c987058b0743c53af0378df48a12b6004bf4496847051062bf
