@@ -1,0 +1,63 @@
+---
+name: ci
+
+"on":
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  HADOLINT_VERSION: v2.15.1
+
+# Quay builds and pushes the image on git tags (build trigger). This workflow only
+# checks the code and that the image builds; it pushes nothing.
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.2.0
+
+      - name: Install the Python tools
+        run: uv sync --locked
+
+      - name: ruff
+        run: uv run ruff check .
+
+      - name: yamllint
+        run: uv run yamllint .
+
+      - name: requirements.txt matches uv.lock
+        run: |
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt -o /tmp/requirements.txt
+          diff -u requirements.txt /tmp/requirements.txt
+
+      - name: hadolint
+        run: docker run --rm -i "hadolint/hadolint:${HADOLINT_VERSION}" < Containerfile
+
+      - name: Unit tests
+        run: uv run pytest
+
+  build:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Build the image (no push)
+        run: podman build -t localhost/routing-live-view:ci -f Containerfile .
+
+      - name: Smoke test
+        run: |
+          podman run -d --name rlv -p 8080:8080 -e KUBERNETES_ENABLED=false localhost/routing-live-view:ci
+          for i in $(seq 1 20); do curl -fsS http://localhost:8080/healthz && break; sleep 1; done
+          curl -fsS http://localhost:8080/ | grep -q "Routing Live View"
+          curl -fsS http://localhost:8080/api/state
+          podman rm -f rlv
