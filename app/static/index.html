@@ -427,8 +427,11 @@ tr.new td { animation: rowin .9s ease-out; }
     } catch (e) { /* defaults */ }
     if (cfg.cluster_name) { $("cluster").textContent = `cluster ${cfg.cluster_name}`; $("cluster").hidden = false; }
     $("label-chip").textContent = `label ${cfg.label}`;
-    $("local-model").textContent = cfg.local_model;
-    $("sota-model").textContent = cfg.sota_model;
+    // Short names in the boxes of the diagram: "Qwen3.8 27B NVFP4 (local, vLLM GPU)" -> "Qwen3.8 27B NVFP4".
+    const short = (s) => String(s || "").replace(/\s*\(.*\)\s*$/, "").slice(0, 22);
+    $("local-model").textContent = short(cfg.local_model);
+    $("local-model").setAttribute("title", cfg.local_model);
+    $("sota-model").textContent = short(cfg.sota_model);
     $("k-external-label").textContent = `Sent to ${cfg.sota_model || "the external model"}`;
     renderNamespaces();
     try {
