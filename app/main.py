@@ -121,16 +121,24 @@ async def set_data_class(
     kube: Kube | None = getattr(request.app.state, "kube", None)
     if kube is None:
         return JSONResponse({"error": "The Kubernetes API is off."}, status_code=503)
+    # The RBAC of the signed-in user decides; the ServiceAccount of the page then writes.
     try:
-        await kube.set_namespace_label(name, s.data_class_label, body.value,
-                                       x_forwarded_access_token)
+        allowed = await kube.user_can_patch_namespace(name, x_forwarded_access_token)
+    except KubeError as exc:
+        logger.warning("access review of %s for %s: %s", name, x_forwarded_user, exc)
+        return JSONResponse({"error": f"Cannot check your access: {exc}"}, status_code=502)
+    if not allowed:
+        logger.info("label change on %s refused for %s (no patch on namespaces)", name,
+                    x_forwarded_user)
+        return JSONResponse({"error": "Your OpenShift user cannot change this namespace."},
+                            status_code=403)
+    try:
+        await kube.set_namespace_label(name, s.data_class_label, body.value)
     except KubeError as exc:
         logger.warning("label %s=%s on %s by %s: %s", s.data_class_label, body.value, name,
                        x_forwarded_user, exc)
-        if exc.status == 403:
-            return JSONResponse({"error": "Your OpenShift user cannot change this namespace."},
-                                status_code=403)
-        return JSONResponse({"error": str(exc)}, status_code=502)
+        return JSONResponse({"error": f"The page cannot change the label: {exc}"},
+                            status_code=502)
     logger.info("label %s=%s on %s by %s", s.data_class_label, body.value, name, x_forwarded_user)
     request.app.state.wake.set()  # read the labels again now
     return JSONResponse({"namespace": name, "value": body.value})

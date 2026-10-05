@@ -30,13 +30,16 @@ from the internet.
 |---|---|---|
 | Decisions | The log lines `[policy-router] {...}` of the LiteLLM pods (follow, one stream per replica, reconnect from the last timestamp). The line is a stable interface of the router repo | `get`/`list` pods and `get` pods/log in the router namespace (Role in the gitops repo) |
 | Labels | `GET` of each demo namespace every 2 seconds, and at once after a change from the page | `get` namespaces (ClusterRole `sovereign-selfheal-namespace-reader`, bound by the ansible repo) |
-| Label change | `PATCH` of the namespace with the **token of the signed-in user** (`X-Forwarded-Access-Token` of oauth-proxy) | None: the RBAC of the user decides. The page changes only the demo namespaces and only to `restricted` or `public` |
+| Label change | First a `SelfSubjectAccessReview` with the **token of the signed-in user** (`X-Forwarded-Access-Token` of oauth-proxy, scope `user:check-access`): may this user patch the namespace? Only if yes, `PATCH` of the namespace label | `patch` on the demo namespaces only (ClusterRole with `resourceNames`, bound by the ansible repo). The RBAC of the user decides; the page changes only the demo namespaces and only to `restricted` or `public`, and logs the user |
 
 Browsers use long polling (`GET /api/events?after=<seq>`, at most 25 seconds), which works through
 oauth-proxy and the OpenShift router without streaming. The page does not change the routing: when it is
 down, the router works the same.
 
-The gitops repo deploys it behind the OpenShift oauth-proxy (sign-in with the cluster users).
+The gitops repo deploys it behind the OpenShift oauth-proxy (sign-in with the cluster users). The
+ServiceAccount of the page is the OAuth client, so oauth-proxy asks only the scopes `user:info` and
+`user:check-access`: OpenShift refuses `user:full` for a ServiceAccount client. That is why the page
+checks the user and then writes with its own ServiceAccount.
 
 ## API
 

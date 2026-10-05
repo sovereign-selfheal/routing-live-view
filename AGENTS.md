@@ -16,14 +16,16 @@ Kubernetes manifests.
 | `routing-live-view` (this repo) | The app (`app/`), the page (`app/static/index.html`), tests, `Containerfile`, image tags |
 | `router` | The log line `[policy-router] {...}` that the page parses (stable interface, router `AGENTS.md` §2.4), the label key `sovereign-selfheal.io/data-class` and the alias `sota-smart` |
 | `gitops` | Deployment, Service, Route, oauth-proxy sidecar, ServiceAccount, Role/RoleBinding (pods, pods/log in the router namespace), the env vars, the image digest |
-| `ansible` | The ClusterRole `sovereign-selfheal-namespace-reader` and its binding to the ServiceAccount of the page (the gitops AppProject allows no cluster-scoped objects), the namespace labels |
+| `ansible` | The ClusterRoles `sovereign-selfheal-namespace-reader` and `sovereign-selfheal-demo-namespace-labeler` (patch on the demo namespaces only) and their bindings to the ServiceAccount of the page (the gitops AppProject allows no cluster-scoped objects), the namespace labels |
 
 Rules:
 
 1. **Read-only for the routing.** The page never changes how requests are routed, and the router never
-   depends on the page. The only write is the namespace label, with the token of the signed-in user.
-2. **The user's RBAC decides a label change.** Never use the ServiceAccount of the page to write. Keep the
-   allow list: only `DEMO_NAMESPACES`, only the values `restricted` and `public`.
+   depends on the page. The only write is the namespace label.
+2. **The user's RBAC decides a label change.** Write only after a `SelfSubjectAccessReview` with the
+   token of the signed-in user says `allowed` (verb `patch` on that namespace). The ServiceAccount may
+   patch only the demo namespaces (ClusterRole with `resourceNames`, ansible repo). Keep the allow list:
+   only `DEMO_NAMESPACES`, only the values `restricted` and `public`. Log the user of every change.
 3. **Metadata only.** The page shows fields of the decision line; it never reads or shows prompt text.
 4. **No requests outside the cluster from the page** (no web fonts, no CDN): the demo is about data
    sovereignty.

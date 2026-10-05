@@ -1,8 +1,9 @@
 """A small Kubernetes API client with httpx: what the page needs and nothing more.
 
-Reads (namespace labels, router pods, router logs) use the ServiceAccount of the pod. The label
-change of the page uses the token of the signed-in user (oauth-proxy `--pass-access-token`), so
-the RBAC of that user decides, not the ServiceAccount of the page.
+Everything runs with the ServiceAccount of the pod, except one call: before a label change the
+page asks, with the token of the signed-in user (oauth-proxy `--pass-access-token`, scope
+`user:check-access`), whether that user may patch the namespace (SelfSubjectAccessReview). So the
+RBAC of the user decides; the ServiceAccount may patch only the demo namespaces.
 """
 
 from __future__ import annotations
@@ -93,14 +94,26 @@ class Kube:
             async for line in resp.aiter_lines():
                 yield line
 
-    async def set_namespace_label(self, name: str, label: str, value: str,
-                                  user_token: str) -> None:
-        """Change one label of a namespace with the token of the signed-in user."""
+    async def user_can_patch_namespace(self, name: str, user_token: str) -> bool:
+        """Whether the signed-in user may patch the namespace (SelfSubjectAccessReview)."""
+        resp = await self.client.post(
+            "/apis/authorization.k8s.io/v1/selfsubjectaccessreviews",
+            json={"apiVersion": "authorization.k8s.io/v1", "kind": "SelfSubjectAccessReview",
+                  "spec": {"resourceAttributes": {"verb": "patch", "resource": "namespaces",
+                                                  "name": name}}},
+            headers={"Authorization": f"Bearer {user_token}"},
+            timeout=10.0,
+        )
+        _raise_for(resp)
+        return bool((resp.json().get("status") or {}).get("allowed"))
+
+    async def set_namespace_label(self, name: str, label: str, value: str) -> None:
+        """Change one label of a namespace, with the ServiceAccount of the page."""
+        headers = dict(self._sa_headers(), **{"Content-Type": "application/merge-patch+json"})
         resp = await self.client.patch(
             f"/api/v1/namespaces/{name}",
             json={"metadata": {"labels": {label: value}}},
-            headers={"Authorization": f"Bearer {user_token}",
-                     "Content-Type": "application/merge-patch+json"},
+            headers=headers,
             timeout=10.0,
         )
         _raise_for(resp)
