@@ -16,8 +16,9 @@ Read [`AGENTS.md`](AGENTS.md) before changing anything.
   command that does the same from a terminal.
 - **Request flow**: each decision of the router moves from the namespace of the request, through the
   agents and the router (the gate that decided lights up), to the local GPU or out of the cluster.
-- **Decisions**: the last decisions, with the namespaces of the request, how the router found them
-  (`hint` from the agent, `scan` of the text), the gate or policy that decided and the destination.
+- **Decisions**: the last decisions, with the namespaces of the request and a small tag that says how
+  the router found them (`hint` from the agent, `scan` of the text), the gate or policy that decided and
+  the destination. A dash means that the request names no namespace.
 - **Counters** since the pod started: restricted requests, kept in the cluster, sent outside, and the
   restricted requests sent outside (must stay 0).
 
