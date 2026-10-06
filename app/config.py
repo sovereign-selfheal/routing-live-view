@@ -2,12 +2,31 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 from dataclasses import dataclass, field
+
+log = logging.getLogger(__name__)
 
 
 def _list(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _labels(value: str) -> dict[str, str]:
+    """A JSON object of tier -> name; anything else is logged and ignored."""
+    if not value.strip():
+        return {}
+    try:
+        data = json.loads(value)
+    except ValueError:
+        log.warning("TIER_LABELS is not valid JSON: ignored")
+        return {}
+    if not isinstance(data, dict):
+        log.warning("TIER_LABELS is not a JSON object: ignored")
+        return {}
+    return {str(k): str(v) for k, v in data.items() if str(k).strip() and str(v).strip()}
 
 
 @dataclass(frozen=True)
@@ -26,6 +45,9 @@ class Settings:
     cluster_name: str = ""
     local_model_label: str = "Local model"
     sota_model_label: str = "External model"
+    # Name of the agent (or application) of each API-key tier, shown in the column Agent. The router
+    # logs the tier of each request (`team`); a tier without a name shows as "<tier> key".
+    tier_labels: dict[str, str] = field(default_factory=dict)
     # Seconds between two reads of the namespace labels and of the router pods.
     namespace_poll_seconds: float = 2.0
     pod_poll_seconds: float = 10.0
@@ -45,6 +67,7 @@ class Settings:
             cluster_name=env("CLUSTER_NAME", ""),
             local_model_label=env("LOCAL_MODEL_LABEL", cls.local_model_label),
             sota_model_label=env("SOTA_MODEL_LABEL", cls.sota_model_label),
+            tier_labels=_labels(env("TIER_LABELS", "")),
             namespace_poll_seconds=float(env("NAMESPACE_POLL_SECONDS", "2")),
             pod_poll_seconds=float(env("POD_POLL_SECONDS", "10")),
             kubernetes_enabled=env("KUBERNETES_ENABLED", "true").lower() in ("1", "true", "yes"),

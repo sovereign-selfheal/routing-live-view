@@ -29,6 +29,27 @@ def test_parse_a_sota_decision_without_namespace_fields():
     assert ev["ts"] == ""
 
 
+def test_parse_the_sota_budget_of_the_tier():
+    # Router v0.12.0: a tier with a SOTA budget logs the tokens used in the window and its budget.
+    line = ("[policy-router] {'policy': 'chain', 'requested': 'auto', 'routed_to': 'local-fast', "
+            "'decided_by': 'efficiency', 'chain': [], 'team': 'agents', "
+            "'reason': 'efficiency: SOTA budget of tier agents used (31261/30000) -> LOCAL', "
+            "'sota_budget_used': 31261, 'sota_budget_limit': 30000}")
+    ev = parse_line(line)
+    assert ev["team"] == "agents"
+    assert (ev["sota_budget_used"], ev["sota_budget_limit"]) == (31261, 30000)
+
+
+def test_budget_fields_missing_or_not_numbers():
+    assert parse_line(LINE)["sota_budget_limit"] is None  # tier without a budget
+    line = ("[policy-router] {'routed_to': 'sota-smart', 'decided_by': 'all-sota', "
+            "'sota_budget_used': None, 'sota_budget_limit': 'x', 'sota_budget_error': 'Timeout'}")
+    ev = parse_line(line)
+    assert ev["sota_budget_used"] is None and ev["sota_budget_limit"] is None
+    line = "[policy-router] {'routed_to': 'local-fast', 'sota_budget_used': True}"
+    assert parse_line(line)["sota_budget_used"] is None
+
+
 def test_fail_closed_line_has_no_decided_by():
     line = ("[policy-router] {'policy': 'chain', 'routed_to': 'local-fast', "
             "'reason': 'chain: fail-closed on error (x) -> LOCAL'}")
