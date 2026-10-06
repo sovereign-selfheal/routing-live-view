@@ -121,6 +121,8 @@ tr.new td { animation: rowin .9s ease-out; }
 .dest-tag.local { color: var(--local); border-color: var(--local); }
 .dest-tag.external { color: var(--external); border-color: var(--external); }
 .ns-r { color: var(--restricted); }
+/* How the router found the namespaces (hint, scan): a quiet tag after the names. */
+.src-tag { font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; margin-left: 8px; }
 .why { color: var(--muted); }
 .why b { color: var(--fg); font-weight: 500; }
 
@@ -214,7 +216,7 @@ tr.new td { animation: rowin .9s ease-out; }
       <h2>Routing decisions <span class="msg" id="since"></span></h2>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Time</th><th>Namespaces</th><th>Found by</th><th>Decided by</th><th>Destination</th><th>Request</th></tr></thead>
+          <thead><tr><th>Time</th><th>Namespaces</th><th>Decided by</th><th>Destination</th><th>Request</th></tr></thead>
           <tbody id="feed"></tbody>
         </table>
       </div>
@@ -363,9 +365,11 @@ tr.new td { animation: rowin .9s ease-out; }
     st.times.push(now); st.times = st.times.filter((t) => now - t < 60000);
     $("k-rate").textContent = st.times.length;
     const local = ev.destination === "local";
+    // Namespaces of the request, then how the router found them; a dash when there is none.
     const ns = ev.namespaces.length
       ? ev.namespaces.map((n) => ev.ns_restricted.includes(n) ? `<span class="ns-r">${esc(n)}</span>` : esc(n)).join(", ")
-      : '<span class="why">none found</span>';
+        + (ev.ns_source && ev.ns_source !== "none" ? `<span class="src-tag">${esc(ev.ns_source)}</span>` : "")
+      : '<span class="why">\u2014</span>';
     const why = ev.decided_by === "namespace" ? '<b>namespace</b> <span class="why">restricted</span>'
       : `<b>${esc(ev.decided_by)}</b> <span class="why">${ev.decided_by === "tiering" ? "tier" : "gate"}</span>`;
     const time = ev.ts ? new Date(ev.ts).toLocaleTimeString([], { hour12: false }) : "";
@@ -373,7 +377,7 @@ tr.new td { animation: rowin .9s ease-out; }
     const tr = document.createElement("tr");
     tr.className = "new";
     tr.title = ev.reason || "";
-    tr.innerHTML = `<td class="mono">${esc(time)}</td><td class="mono">${ns}</td><td class="mono">${esc(ev.ns_source || "")}</td>
+    tr.innerHTML = `<td class="mono">${esc(time)}</td><td class="mono">${ns}</td>
       <td>${why}</td><td><span class="dest-tag ${local ? "local" : "external"}">${local ? "local GPU" : "external"}</span></td>
       <td class="mono">${esc(size)}</td>`;
     const body = $("feed");
