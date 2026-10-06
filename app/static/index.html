@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Routing Live View</title>
+<style>
+/* Layout: a control-room strip (headline counter + KPIs) over a cluster map, with namespace controls and a decision feed below.
+   Single dark look by choice: the page is projected on stage. */
+:root {
+  --bg: #0c1320;
+  --panel: #131c2b;
+  --panel-2: #192437;
+  --line: #2a3750;
+  --fg: #e7edf6;
+  --muted: #8d9ab0;
+  --router: #7ea6ff;
+  --local: #34d3b8;
+  --external: #f4b04a;
+  --restricted: #ff6670;
+  --normal: #9fb2cf;
+  /* No web fonts: the page makes no request outside the cluster. Red Hat fonts when installed. */
+  --font-display: "Red Hat Display", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Red Hat Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Red Hat Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-inline: 20px; padding-block: 18px 40px; display: grid; gap: 18px; }
+
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+h1 { font-family: var(--font-display); font-weight: 900; font-size: 1.7rem; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.chip { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+.live { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--local); }
+.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--local); box-shadow: 0 0 0 0 var(--local); animation: beat 1.6s infinite; }
+.live.paused { color: var(--muted); }
+.live.paused i { background: var(--muted); animation: none; }
+@keyframes beat { 0% { box-shadow: 0 0 0 0 rgba(52,211,184,.6); } 70% { box-shadow: 0 0 0 9px rgba(52,211,184,0); } 100% { box-shadow: 0 0 0 0 rgba(52,211,184,0); } }
+.head-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+button { font: 500 0.85rem var(--font-body); color: var(--fg); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+button:hover { border-color: var(--router); }
+button:focus-visible { outline: 2px solid var(--router); outline-offset: 2px; }
+
+.note { font-size: 0.82rem; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; padding: 6px 12px; }
+.note.err { color: var(--restricted); border-color: var(--restricted); }
+.msg { font-size: 0.82rem; color: var(--muted); min-height: 1.2em; }
+.msg.err { color: var(--restricted); }
+.ns.nolabel .node { stroke: var(--line); }
+.ns.nolabel .pill-bg { fill: var(--line); }
+.ns .pill-t { fill: var(--bg); }
+.ctl.nolabel { border-left-color: var(--line); }
+.ctl.nolabel .state { background: var(--line); color: var(--fg); }
+.ctl.missing { opacity: .6; }
+
+.hero { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr); gap: 18px; align-items: stretch; }
+.headline { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; display: grid; gap: 4px; align-content: center; }
+.headline .label { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.headline .big { font-family: var(--font-display); font-weight: 900; font-size: clamp(3.2rem, 7vw, 5.2rem); line-height: 1; color: var(--local); font-variant-numeric: tabular-nums; }
+.headline .big.bad { color: var(--restricted); }
+.headline .sub { color: var(--muted); font-size: 0.9rem; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.kpi { border-top: 3px solid var(--line); padding: 10px 2px 0; display: grid; gap: 2px; align-content: start; }
+.kpi .v { font-family: var(--font-display); font-weight: 700; font-size: 2rem; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.kpi .k { color: var(--muted); font-size: 0.85rem; }
+.kpi.local { border-top-color: var(--local); }
+.kpi.external { border-top-color: var(--external); }
+.kpi.restricted { border-top-color: var(--restricted); }
+.kpi.rate { border-top-color: var(--router); }
+
+.map { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px; overflow-x: auto; }
+.map svg { display: block; width: 100%; min-width: 760px; height: auto; }
+svg text { font-family: var(--font-body); }
+.t-name { font-family: var(--font-mono); font-size: 15px; fill: var(--fg); }
+.t-small { font-size: 12px; fill: var(--muted); }
+.t-title { font-family: var(--font-display); font-weight: 700; font-size: 16px; fill: var(--fg); }
+.t-boundary { font-family: var(--font-mono); font-size: 12px; fill: var(--muted); letter-spacing: 0.04em; }
+.boundary { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 6 6; }
+.node { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.5; transition: stroke .3s, fill .3s; }
+.ns.restricted .node { stroke: var(--restricted); fill: rgba(255,102,112,.08); }
+.ns.public .node { stroke: var(--normal); }
+.pill-bg { transition: fill .3s; }
+.ns.restricted .pill-bg { fill: var(--restricted); }
+.ns.public .pill-bg { fill: var(--normal); }
+.pill-t { font-family: var(--font-mono); font-size: 11px; fill: var(--bg); font-weight: 500; letter-spacing: .04em; }
+.wire { fill: none; stroke: var(--line); stroke-width: 2; }
+.wire.egress { stroke-dasharray: 4 5; }
+.router .node { stroke: var(--router); }
+.gate { fill: var(--bg); stroke: var(--line); transition: fill .2s, stroke .2s; }
+.gate-t { font-size: 12.5px; fill: var(--muted); transition: fill .2s; }
+.gate.hit { fill: rgba(126,166,255,.18); stroke: var(--router); }
+.gate.hit + .gate-t { fill: var(--fg); }
+.dest.local .node { stroke: var(--local); }
+.dest.external .node { stroke: var(--external); }
+.dest.pulse .node { fill: var(--panel); stroke-width: 3; }
+.gap { fill: var(--bg); }
+
+.lower { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 18px; align-items: start; }
+h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; margin: 0 0 10px; }
+.controls { display: grid; gap: 12px; }
+.ctl { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--normal); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; }
+.ctl.restricted { border-left-color: var(--restricted); }
+.ctl-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ctl-name { font-family: var(--font-mono); font-size: 0.95rem; }
+.state { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: .05em; text-transform: uppercase; border-radius: 999px; padding: 1px 9px; color: var(--bg); background: var(--normal); }
+.ctl.restricted .state { background: var(--restricted); }
+.cmd { font-family: var(--font-mono); font-size: 0.74rem; color: var(--muted); background: var(--bg); border-radius: 6px; padding: 6px 8px; overflow-x: auto; white-space: nowrap; }
+.ctl p { margin: 0; color: var(--muted); font-size: 0.85rem; }
+
+.feed { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; min-width: 0; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.86rem; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 0.74rem; letter-spacing: .07em; text-transform: uppercase; padding: 4px 8px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 7px 8px; border-bottom: 1px solid rgba(42,55,80,.55); white-space: nowrap; }
+td.mono { font-family: var(--font-mono); font-size: 0.8rem; }
+tr.new td { animation: rowin .9s ease-out; }
+@keyframes rowin { from { background: rgba(126,166,255,.16); } to { background: transparent; } }
+.dest-tag { font-family: var(--font-mono); font-size: 0.76rem; border-radius: 6px; padding: 1px 7px; border: 1px solid; }
+.dest-tag.local { color: var(--local); border-color: var(--local); }
+.dest-tag.external { color: var(--external); border-color: var(--external); }
+.ns-r { color: var(--restricted); }
+.why { color: var(--muted); }
+.why b { color: var(--fg); font-weight: 500; }
+
+@media (max-width: 900px) {
+  .hero, .lower { grid-template-columns: minmax(0, 1fr); }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live i, tr.new td { animation: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>Routing Live View</h1>
+      <span class="chip" id="cluster" hidden></span>
+      <span class="chip" id="label-chip"></span>
+    </div>
+    <div class="head-actions">
+      <span class="live" id="live"><i></i><span id="live-t">Live</span></span>
+      <button id="pause" type="button">Pause</button>
+    </div>
+  </header>
+
+  <div class="note" id="note" hidden></div>
+
+  <section class="hero" aria-label="Summary">
+    <div class="headline">
+      <span class="label">Restricted requests sent outside the cluster</span>
+      <span class="big" id="k-leak">0</span>
+      <span class="sub" id="k-leak-sub">Every request about a restricted namespace stayed on the local GPU.</span>
+    </div>
+    <div class="kpis">
+      <div class="kpi restricted"><span class="v" id="k-restricted">0</span><span class="k">Restricted requests</span></div>
+      <div class="kpi local"><span class="v" id="k-local">0</span><span class="k">Kept in the cluster</span></div>
+      <div class="kpi external"><span class="v" id="k-external">0</span><span class="k" id="k-external-label">Sent outside</span></div>
+      <div class="kpi rate"><span class="v" id="k-rate">0</span><span class="k">Decisions per minute</span></div>
+    </div>
+  </section>
+
+  <section class="map" aria-label="Request flow">
+    <svg id="map" viewBox="0 0 1000 420" role="img" aria-label="Agent requests flow from namespaces through the router to the local model or to the external model">
+      <rect class="boundary" x="14" y="16" width="770" height="388" rx="18"/>
+      <text class="t-boundary" x="34" y="40">OPENSHIFT CLUSTER</text>
+      <g id="ns-wires"></g>
+      <path id="w-agent" class="wire" d="M402,210 L438,210"/>
+      <path id="w-local" class="wire" d="M598,180 C616,180 612,112 640,112"/>
+      <path id="w-external" class="wire egress" d="M598,240 C680,240 700,318 836,318"/>
+      <rect class="gap" x="779" y="300" width="10" height="36"/>
+      <text class="t-small" x="792" y="296">egress</text>
+      <g id="ns-nodes"></g>
+      <g>
+        <rect class="node" x="272" y="170" width="130" height="80" rx="12"/>
+        <text class="t-title" x="337" y="204" text-anchor="middle">Agents</text>
+        <text class="t-small" x="337" y="226" text-anchor="middle">triage-agent · OGX</text>
+      </g>
+      <g class="router">
+        <rect class="node" x="438" y="106" width="160" height="208" rx="14"/>
+        <text class="t-title" x="518" y="136" text-anchor="middle">Router</text>
+        <rect class="gate" id="g-namespace" x="452" y="152" width="132" height="42" rx="8"/>
+        <text class="gate-t" x="518" y="178" text-anchor="middle">Namespace policy</text>
+        <rect class="gate" id="g-efficiency" x="452" y="204" width="132" height="42" rx="8"/>
+        <text class="gate-t" x="518" y="230" text-anchor="middle">Efficiency gate</text>
+        <rect class="gate" id="g-privacy" x="452" y="256" width="132" height="42" rx="8"/>
+        <text class="gate-t" x="518" y="282" text-anchor="middle">Privacy gate</text>
+      </g>
+      <g class="dest local" id="d-local">
+        <rect class="node" x="640" y="66" width="130" height="92" rx="12"/>
+        <text class="t-title" x="705" y="96" text-anchor="middle">Local GPU</text>
+        <text class="t-small" x="705" y="118" text-anchor="middle" id="local-model"></text>
+        <text class="t-small" x="705" y="138" text-anchor="middle">vLLM · in cluster</text>
+      </g>
+      <g class="dest external" id="d-external">
+        <rect class="node" x="836" y="272" width="146" height="92" rx="12"/>
+        <text class="t-title" x="909" y="302" text-anchor="middle">External SOTA</text>
+        <text class="t-small" x="909" y="324" text-anchor="middle" id="sota-model"></text>
+        <text class="t-small" x="909" y="344" text-anchor="middle">outside the cluster</text>
+      </g>
+      <g id="particles"></g>
+    </svg>
+  </section>
+
+  <section class="lower">
+    <div>
+      <h2>Namespaces</h2>
+      <div class="controls" id="controls"></div>
+    </div>
+    <div class="feed">
+      <h2>Routing decisions <span class="msg" id="since"></span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th>Namespaces</th><th>Found by</th><th>Decided by</th><th>Destination</th><th>Request</th></tr></thead>
+          <tbody id="feed"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const svgNS = "http://www.w3.org/2000/svg";
+  const $ = (id) => document.getElementById(id);
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  const cfg = { demo_namespaces: [], label: "", local_model: "", sota_model: "" };
+  const st = { seq: 0, paused: false, namespaces: {}, queue: [], times: [], animating: false };
+
+  // ----- namespace cards (diagram + controls) ------------------------------------------
+  function classOf(name) {
+    if (!(name in st.namespaces)) return "missing";
+    const v = st.namespaces[name];
+    if (v === "restricted") return "restricted";
+    return v === "public" ? "public" : "nolabel";
+  }
+  function stateText(cls, name) {
+    if (cls === "missing") return "not found";
+    if (cls === "nolabel") return st.namespaces[name] ? `label: ${st.namespaces[name]}` : "no label";
+    return cls;
+  }
+  function layoutY(i, n) {
+    const top = 64, bottom = 356, h = 92;
+    if (n <= 1) return 164;
+    return top + i * ((bottom - top - h) / (n - 1));
+  }
+  function renderNamespaces() {
+    const names = cfg.demo_namespaces;
+    const nodes = $("ns-nodes"), wires = $("ns-wires");
+    nodes.textContent = ""; wires.textContent = "";
+    names.forEach((name, i) => {
+      const y = layoutY(i, names.length), cy = y + 48, cls = classOf(name);
+      const w = document.createElementNS(svgNS, "path");
+      w.setAttribute("id", "w-ns-" + name); w.setAttribute("class", "wire");
+      w.setAttribute("d", `M232,${cy} C252,${cy} 250,210 272,210`);
+      wires.appendChild(w);
+      const g = document.createElementNS(svgNS, "g");
+      g.setAttribute("class", "ns " + cls); g.setAttribute("id", "n-" + name);
+      g.innerHTML = `<rect class="node" x="40" y="${y}" width="192" height="96" rx="12"/>
+        <text class="t-name" x="56" y="${y + 30}">${esc(name)}</text>
+        <text class="t-small" x="56" y="${y + 52}">${cls === "restricted" ? "local model only" : "normal routing"}</text>
+        <rect class="pill-bg" x="56" y="${y + 64}" width="96" height="20" rx="10"/>
+        <text class="pill-t" x="104" y="${y + 78}" text-anchor="middle">${esc(stateText(cls, name).toUpperCase())}</text>`;
+      nodes.appendChild(g);
+    });
+    const box = $("controls");
+    box.textContent = "";
+    for (const name of names) {
+      const cls = classOf(name);
+      const next = cls === "restricted" ? "public" : "restricted";
+      const card = document.createElement("div");
+      card.className = "ctl " + cls;
+      card.innerHTML = `
+        <div class="ctl-top"><span class="ctl-name">${esc(name)}</span><span class="state">${esc(stateText(cls, name))}</span></div>
+        <p>${cls === "restricted" ? "Requests about this namespace go only to the local GPU." : "Requests follow the normal routing: efficiency and privacy gates."}</p>
+        <div class="cmd">oc label namespace ${esc(name)} ${esc(cfg.label)}=${next} --overwrite</div>
+        <div><button type="button" ${cls === "missing" ? "disabled" : ""}>Mark as ${next}</button></div>
+        <div class="msg" aria-live="polite"></div>`;
+      const btn = card.querySelector("button"), msg = card.querySelector(".msg");
+      btn.addEventListener("click", () => setClass(name, next, btn, msg));
+      box.appendChild(card);
+    }
+  }
+  async function setClass(name, value, btn, msg) {
+    btn.disabled = true; msg.className = "msg"; msg.textContent = "Changing the label...";
+    try {
+      const r = await fetch(`api/namespaces/${encodeURIComponent(name)}/data-class`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value }) });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+      msg.textContent = `Label set to ${value}. The router reads it within a few seconds.`;
+    } catch (e) {
+      msg.className = "msg err"; msg.textContent = e.message; btn.disabled = false;
+    }
+  }
+
+  // ----- animation ----------------------------------------------------------------------
+  function travel(path, color, ms) {
+    return new Promise((resolve) => {
+      if (reduceMotion || !path || document.hidden) { resolve(); return; }
+      const len = path.getTotalLength();
+      const dot = document.createElementNS(svgNS, "circle");
+      dot.setAttribute("r", "6"); dot.setAttribute("fill", color);
+      $("particles").appendChild(dot);
+      const t0 = performance.now();
+      function step(now) {
+        const p = Math.min(1, (now - t0) / ms), pt = path.getPointAtLength(len * p);
+        dot.setAttribute("cx", pt.x); dot.setAttribute("cy", pt.y);
+        if (p < 1) requestAnimationFrame(step); else { dot.remove(); resolve(); }
+      }
+      requestAnimationFrame(step);
+    });
+  }
+  function flash(el, cls, ms) { if (!el) return; el.classList.add(cls); setTimeout(() => el.classList.remove(cls), ms); }
+  function originOf(ev) {
+    const cards = cfg.demo_namespaces;
+    return ev.ns_restricted.find((n) => cards.includes(n)) || ev.namespaces.find((n) => cards.includes(n)) || null;
+  }
+  async function animate(ev) {
+    const restricted = ev.ns_restricted.length > 0;
+    const c1 = restricted ? css("--restricted") : css("--normal");
+    const origin = originOf(ev);
+    if (origin) await travel($("w-ns-" + origin), c1, 420);
+    await travel($("w-agent"), c1, 180);
+    const gate = { namespace: "g-namespace", efficiency: "g-efficiency", privacy: "g-privacy", "all-sota": "g-privacy" }[ev.decided_by];
+    flash($(gate), "hit", 700);
+    await new Promise((r) => setTimeout(r, reduceMotion ? 0 : 180));
+    const local = ev.destination === "local";
+    await travel($(local ? "w-local" : "w-external"), local ? css("--local") : css("--external"), local ? 320 : 560);
+    flash($(local ? "d-local" : "d-external"), "pulse", 500);
+  }
+  async function drain() {
+    if (st.animating) return;
+    st.animating = true;
+    while (st.queue.length) {
+      // Keep up under load: animate at most 3 queued requests, list the rest at once.
+      const skip = st.queue.length > 3;
+      const ev = st.queue.shift();
+      if (!skip && !st.paused) await animate(ev);
+      addRow(ev);
+    }
+    st.animating = false;
+  }
+
+  // ----- counters and feed ---------------------------------------------------------------
+  function counters(c) {
+    $("k-restricted").textContent = c.restricted;
+    $("k-local").textContent = c.local;
+    $("k-external").textContent = c.external;
+    $("k-leak").textContent = c.restricted_external;
+    $("k-leak").classList.toggle("bad", c.restricted_external > 0);
+    $("k-leak-sub").textContent = c.restricted_external > 0
+      ? "Some requests about a restricted namespace left the cluster. Check the router log."
+      : (c.restricted ? "Every request about a restricted namespace stayed on the local GPU." : "No request about a restricted namespace yet.");
+  }
+  function addRow(ev) {
+    const now = Date.now();
+    st.times.push(now); st.times = st.times.filter((t) => now - t < 60000);
+    $("k-rate").textContent = st.times.length;
+    const local = ev.destination === "local";
+    const ns = ev.namespaces.length
+      ? ev.namespaces.map((n) => ev.ns_restricted.includes(n) ? `<span class="ns-r">${esc(n)}</span>` : esc(n)).join(", ")
+      : '<span class="why">none found</span>';
+    const why = ev.decided_by === "namespace" ? '<b>namespace</b> <span class="why">restricted</span>'
+      : `<b>${esc(ev.decided_by)}</b> <span class="why">${ev.decided_by === "tiering" ? "tier" : "gate"}</span>`;
+    const time = ev.ts ? new Date(ev.ts).toLocaleTimeString([], { hour12: false }) : "";
+    const size = typeof ev.prompt_chars === "number" ? `${(ev.prompt_chars / 1000).toFixed(1)}k chars` : "";
+    const tr = document.createElement("tr");
+    tr.className = "new";
+    tr.title = ev.reason || "";
+    tr.innerHTML = `<td class="mono">${esc(time)}</td><td class="mono">${ns}</td><td class="mono">${esc(ev.ns_source || "")}</td>
+      <td>${why}</td><td><span class="dest-tag ${local ? "local" : "external"}">${local ? "local GPU" : "external"}</span></td>
+      <td class="mono">${esc(size)}</td>`;
+    const body = $("feed");
+    body.prepend(tr);
+    while (body.children.length > 12) body.lastElementChild.remove();
+  }
+
+  // ----- data -------------------------------------------------------------------------------
+  function apply(data, animateNew) {
+    if (JSON.stringify(data.namespaces) !== JSON.stringify(st.namespaces)) {
+      st.namespaces = data.namespaces || {};
+      renderNamespaces();
+    }
+    const note = $("note");
+    note.hidden = !data.namespaces_error;
+    note.className = "note err";
+    note.textContent = data.namespaces_error ? `Cannot read the namespace labels: ${data.namespaces_error}` : "";
+    counters(data.counters);
+    for (const ev of data.events) {
+      if (animateNew) st.queue.push(ev); else addRow(ev);
+    }
+    st.seq = data.seq;
+    drain();
+  }
+  async function poll() {
+    for (;;) {
+      try {
+        const r = await fetch(`api/events?after=${st.seq}&timeout=20`, { cache: "no-store" });
+        if (r.status === 401 || r.status === 403) { location.reload(); return; }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        apply(await r.json(), true);
+        $("live").classList.toggle("paused", st.paused);
+      } catch (e) {
+        $("live").classList.add("paused"); $("live-t").textContent = "Reconnecting";
+        await new Promise((res) => setTimeout(res, 3000));
+        $("live-t").textContent = st.paused ? "Paused" : "Live";
+      }
+    }
+  }
+
+  $("pause").addEventListener("click", () => {
+    st.paused = !st.paused;
+    $("pause").textContent = st.paused ? "Resume" : "Pause";
+    $("live").classList.toggle("paused", st.paused);
+    $("live-t").textContent = st.paused ? "Paused (list only)" : "Live";
+  });
+
+  (async () => {
+    try {
+      Object.assign(cfg, await (await fetch("api/config", { cache: "no-store" })).json());
+    } catch (e) { /* defaults */ }
+    if (cfg.cluster_name) { $("cluster").textContent = `cluster ${cfg.cluster_name}`; $("cluster").hidden = false; }
+    $("label-chip").textContent = `label ${cfg.label}`;
+    // Short names in the boxes of the diagram: "Qwen3.8 27B NVFP4 (local, vLLM GPU)" -> "Qwen3.8 27B NVFP4".
+    const short = (s) => String(s || "").replace(/\s*\(.*\)\s*$/, "").slice(0, 22);
+    $("local-model").textContent = short(cfg.local_model);
+    $("local-model").setAttribute("title", cfg.local_model);
+    $("sota-model").textContent = short(cfg.sota_model);
+    $("k-external-label").textContent = `Sent to ${cfg.sota_model || "the external model"}`;
+    renderNamespaces();
+    try {
+      const first = await (await fetch("api/state", { cache: "no-store" })).json();
+      $("since").textContent = `since ${new Date(first.started_at * 1000).toLocaleTimeString([], { hour12: false })}`;
+      apply(first, false);
+    } catch (e) { /* the poll loop retries */ }
+    poll();
+  })();
+})();
+</script>
+</body>
+</html>
