@@ -87,6 +87,7 @@ async def config(request: Request,
         "demo_namespaces": s.demo_namespaces,
         "local_model": s.local_model_label,
         "sota_model": s.sota_model_label,
+        "tier_labels": s.tier_labels,
         "user": x_forwarded_user,
     }
 

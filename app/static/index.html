@@ -123,6 +123,9 @@ tr.new td { animation: rowin .9s ease-out; }
 .ns-r { color: var(--restricted); }
 /* How the router found the namespaces (hint, scan): a quiet tag after the names. */
 .src-tag { font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; margin-left: 8px; }
+/* SOTA budget of the tier (router v0.12.0): red when it is used, the router then keeps the tier local. */
+.src-tag.over { color: var(--restricted); border-color: var(--restricted); }
+.tier-key { color: var(--muted); }
 .why { color: var(--muted); }
 .why b { color: var(--fg); font-weight: 500; }
 
@@ -216,7 +219,7 @@ tr.new td { animation: rowin .9s ease-out; }
       <h2>Routing decisions <span class="msg" id="since"></span></h2>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Time</th><th>Namespaces</th><th>Decided by</th><th>Destination</th><th>Request</th></tr></thead>
+          <thead><tr><th>Time</th><th>Agent</th><th>Namespaces</th><th>Decided by</th><th>Destination</th><th>Request</th></tr></thead>
           <tbody id="feed"></tbody>
         </table>
       </div>
@@ -231,7 +234,7 @@ tr.new td { animation: rowin .9s ease-out; }
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
-  const cfg = { demo_namespaces: [], label: "", local_model: "", sota_model: "" };
+  const cfg = { demo_namespaces: [], label: "", local_model: "", sota_model: "", tier_labels: {} };
   const st = { seq: 0, paused: false, namespaces: {}, queue: [], times: [], animating: false };
 
   // ----- namespace cards (diagram + controls) ------------------------------------------
@@ -372,12 +375,25 @@ tr.new td { animation: rowin .9s ease-out; }
       : '<span class="why">\u2014</span>';
     const why = ev.decided_by === "namespace" ? '<b>namespace</b> <span class="why">restricted</span>'
       : `<b>${esc(ev.decided_by)}</b> <span class="why">${ev.decided_by === "tiering" ? "tier" : "gate"}</span>`;
+    // Who asked: the agent of the API-key tier (`team`, set by the gateway), else the tier itself;
+    // then the SOTA budget of the tier, when it has one (router v0.12.0).
+    const named = ev.team && cfg.tier_labels[ev.team];
+    const agent = !ev.team ? '<span class="why">\u2014</span>'
+      : named ? esc(named) : `${esc(ev.team)} <span class="tier-key">key</span>`;
+    const kilo = (n) => n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+    const budget = typeof ev.sota_budget_limit === "number"
+      ? (() => {
+          const used = typeof ev.sota_budget_used === "number" ? ev.sota_budget_used : null;
+          const over = used !== null && used >= ev.sota_budget_limit;
+          return `<span class="src-tag${over ? " over" : ""}">SOTA ${used === null ? "?" : kilo(used)}/${kilo(ev.sota_budget_limit)}</span>`;
+        })()
+      : "";
     const time = ev.ts ? new Date(ev.ts).toLocaleTimeString([], { hour12: false }) : "";
     const size = typeof ev.prompt_chars === "number" ? `${(ev.prompt_chars / 1000).toFixed(1)}k chars` : "";
     const tr = document.createElement("tr");
     tr.className = "new";
     tr.title = ev.reason || "";
-    tr.innerHTML = `<td class="mono">${esc(time)}</td><td class="mono">${ns}</td>
+    tr.innerHTML = `<td class="mono">${esc(time)}</td><td class="mono" title="${esc(ev.team || "")}">${agent}${budget}</td><td class="mono">${ns}</td>
       <td>${why}</td><td><span class="dest-tag ${local ? "local" : "external"}">${local ? "local GPU" : "external"}</span></td>
       <td class="mono">${esc(size)}</td>`;
     const body = $("feed");

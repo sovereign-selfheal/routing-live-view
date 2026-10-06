@@ -47,6 +47,16 @@ def test_index_and_config(client):
     assert cfg["demo_namespaces"] == ["agentic-triage", "payments"]
     assert cfg["label"] == "sovereign-selfheal.io/data-class"
     assert cfg["user"] == "amedeos" and cfg["cluster_name"] == "ocp.test"
+    assert cfg["tier_labels"] == {}
+
+
+def test_tier_labels_from_the_env(monkeypatch):
+    monkeypatch.setenv("TIER_LABELS", '{"agents": "triage-agent", "empty": "", "": "x"}')
+    assert Settings.from_env().tier_labels == {"agents": "triage-agent"}
+    monkeypatch.setenv("TIER_LABELS", "not json")
+    assert Settings.from_env().tier_labels == {}
+    monkeypatch.setenv("TIER_LABELS", '["agents"]')
+    assert Settings.from_env().tier_labels == {}
 
 
 def test_state_and_events(client):

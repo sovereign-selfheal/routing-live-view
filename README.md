@@ -16,9 +16,15 @@ Read [`AGENTS.md`](AGENTS.md) before changing anything.
   command that does the same from a terminal.
 - **Request flow**: each decision of the router moves from the namespace of the request, through the
   agents and the router (the gate that decided lights up), to the local GPU or out of the cluster.
-- **Decisions**: the last decisions, with the namespaces of the request and a small tag that says how
-  the router found them (`hint` from the agent, `scan` of the text), the gate or policy that decided and
-  the destination. A dash means that the request names no namespace.
+- **Decisions**: the last decisions, with the agent that asked, the namespaces of the request and a
+  small tag that says how the router found them (`hint` from the agent, `scan` of the text), the gate or
+  policy that decided and the destination. A dash means that the request names no namespace.
+  - **Agent**: the name of the agent of the API-key tier (the router logs the tier as `team`, from the
+    header `x-team` that the gateway sets from the key; `TIER_LABELS`). A tier without a name shows as
+    `<tier> key`, for example `research key` (a key of people, not of an agent).
+  - **SOTA budget** (router v0.12.0): for a tier with a budget, a tag such as `SOTA 25k/30k` (tokens of
+    the SOTA model in the window / budget). It is red when the budget is used: the router then keeps
+    the requests of the tier on the local model.
 - **Counters** since the pod started: restricted requests, kept in the cluster, sent outside, and the
   restricted requests sent outside (must stay 0).
 
@@ -65,6 +71,7 @@ checks the user and then writes with its own ServiceAccount.
 | `SOTA_ALIAS` | `sota-smart` | Model alias of the external model in the router (`routed_to`) |
 | `CLUSTER_NAME` | empty | Shown in the header |
 | `LOCAL_MODEL_LABEL` / `SOTA_MODEL_LABEL` | `Local model` / `External model` | Names of the two models on the page |
+| `TIER_LABELS` | `{}` | JSON object, API-key tier -> name of its agent, for example `{"agents": "triage-agent"}` (column Agent) |
 | `NAMESPACE_POLL_SECONDS` / `POD_POLL_SECONDS` | `2` / `10` | Seconds between two reads of the labels / of the router pods |
 | `KUBERNETES_ENABLED` | `true` | `false`: no Kubernetes API call (tests, local run of the page) |
 | `LOG_LEVEL` | `INFO` | Python log level |

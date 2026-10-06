@@ -3,7 +3,8 @@
 The line is a stable interface of the router repo (AGENTS.md §2.4): a Python dict literal with at
 least `policy`, `requested`, `routed_to`, `decided_by`, `chain`, `reason`, `team`. Since router
 v0.11.0 (namespace policy on) it also has `ns_restricted`, `ns_source`, `namespaces` and
-`ns_labels_loaded`. The page reads metadata only: the line has no prompt text.
+`ns_labels_loaded`; since router v0.12.0, for a tier with a SOTA budget, `sota_budget_used` and
+`sota_budget_limit`. The page reads metadata only: the line has no prompt text.
 """
 
 from __future__ import annotations
@@ -54,9 +55,18 @@ def parse_line(line: str, sota_alias: str = "sota-smart") -> dict[str, Any] | No
         "ns_restricted": _names(decision.get("ns_restricted")),
         "ns_source": decision.get("ns_source"),
         "prompt_chars": decision.get("prompt_chars"),
+        "sota_budget_used": _int(decision.get("sota_budget_used")),
+        "sota_budget_limit": _int(decision.get("sota_budget_limit")),
         "trace_id": decision.get("trace_id"),
         "reason": reason[:240],
     }
+
+
+def _int(value: Any) -> int | None:
+    """An integer field of the line, or None (missing, not a number, a bool)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value)
 
 
 def _names(value: Any) -> list[str]:
